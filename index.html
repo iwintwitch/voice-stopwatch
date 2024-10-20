@@ -51,7 +51,7 @@
 <body>
   <h1>Voice-Controlled Stopwatch</h1>
   <div id="next-session">Next session starts at: --:--</div>
-  <p id="timer">00:00:00.000</p>
+  <p id="timer">00:00.000</p>
   <p id="status">Say "start", "stop", "pause", "reset", "restart", or "end"</p>
   <button id="mic-btn">Start Voice Control</button>
   <button id="toggle-sessions-btn">Show Session History</button>
@@ -84,15 +84,14 @@
     let isRunning = false;
     let sessionStartTime;
 
-    // Function to format time as HH:MM:SS:ms
+    // Function to format time as MM:SS:ms
     function formatTime(ms) {
       let totalSeconds = Math.floor(ms / 1000);
-      let hours = Math.floor(totalSeconds / 3600);
-      let minutes = Math.floor((totalSeconds % 3600) / 60);
+      let minutes = Math.floor(totalSeconds / 60);
       let seconds = totalSeconds % 60;
       let milliseconds = ms % 1000;
 
-      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
     }
 
     // Function to display the next session time
@@ -146,7 +145,7 @@
       clearInterval(stopwatchInterval);
       isRunning = false;
       elapsedTime = 0;
-      timerDisplay.textContent = "00:00:00.000";
+      timerDisplay.textContent = "00:00.000";
     }
 
     // Save session using localStorage
@@ -156,7 +155,7 @@
       const sessionName = `S${sessionIndex} - ${dateTime.toLocaleDateString()} - ${formatAMPM(dateTime)}`;
       const sessionData = {
         name: sessionName,
-        time: elapsedTime
+        time: elapsedTime // Store the actual elapsed time, not a string
       };
       const storedSessions = JSON.parse(localStorage.getItem('sessions')) || [];
       storedSessions.push(sessionData);
@@ -295,7 +294,7 @@
         const [sessionName, sessionTime] = label.split(': ');
         updatedSessions.push({
           name: sessionName,
-          time: sessionTime
+          time: elapsedTime // Store the correct elapsed time
         });
       });
       localStorage.setItem('sessions', JSON.stringify(updatedSessions));
