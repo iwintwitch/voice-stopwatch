@@ -155,7 +155,7 @@
       const sessionName = `S${sessionIndex} - ${dateTime.toLocaleDateString()} - ${formatAMPM(dateTime)}`;
       const sessionData = {
         name: sessionName,
-        time: elapsedTime // Store the actual elapsed time, not a string
+        time: elapsedTime // Save the actual elapsed time before resetting
       };
       const storedSessions = JSON.parse(localStorage.getItem('sessions')) || [];
       storedSessions.push(sessionData);
@@ -223,10 +223,10 @@
             statusText.textContent = 'Stopwatch reset!';
           } else if (voiceInput === 'end' || voiceInput === 'and') {
             pauseStopwatch();  // Stop the timer
+            saveSession(); // Save the session before resetting the timer
             resetStopwatch();  // Reset the timer
             recognition.stop();
             statusText.textContent = 'Session ended, timer reset.';
-            saveSession();
           } else {
             statusText.textContent = 'Unrecognized command: ' + voiceInput;
           }
@@ -294,10 +294,17 @@
         const [sessionName, sessionTime] = label.split(': ');
         updatedSessions.push({
           name: sessionName,
-          time: elapsedTime // Store the correct elapsed time
+          time: parseTimeToMilliseconds(sessionTime)
         });
       });
       localStorage.setItem('sessions', JSON.stringify(updatedSessions));
+    }
+
+    // Convert formatted MM:SS:ms back to milliseconds for storage
+    function parseTimeToMilliseconds(timeStr) {
+      const [minutes, seconds] = timeStr.split(':');
+      const [secs, millis] = seconds.split('.');
+      return (parseInt(minutes) * 60 * 1000) + (parseInt(secs) * 1000) + parseInt(millis);
     }
 
     // Attach event listener to the button to start recognition on click
