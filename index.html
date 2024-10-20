@@ -20,6 +20,10 @@
       margin: 20px;
       text-align: center;
     }
+    #next-session {
+      font-size: 24px;
+      margin: 10px;
+    }
     button {
       padding: 10px 20px;
       font-size: 18px;
@@ -31,21 +35,23 @@
       text-align: center;
     }
     #sessions {
-      margin-top: 20px;
       max-width: 90%;
       overflow-y: auto;
       height: 150px;
       border: 1px solid #ccc;
       padding: 10px;
       background-color: white;
+      display: none; /* Hidden initially */
     }
   </style>
 </head>
 <body>
   <h1>Voice-Controlled Stopwatch</h1>
+  <div id="next-session">Next session starts at: --:--</div>
   <p id="timer">00:00:00.000</p>
-  <p id="status">Say "start", "stop", "pause", "reset", or "end"</p>
+  <p id="status">Say "start", "stop", "pause", "reset", "restart", or "end"</p>
   <button id="mic-btn">Start Voice Control</button>
+  <button id="toggle-sessions-btn">Show Session History</button>
   <p id="output"></p>
   <div id="sessions">
     <h3>Session History:</h3>
@@ -55,14 +61,18 @@
   <script>
     let recognition;
     let timerDisplay = document.getElementById('timer');
+    let nextSessionDisplay = document.getElementById('next-session');
     let outputText = document.getElementById('output');
     let statusText = document.getElementById('status');
     let sessionList = document.getElementById('session-list');
     let micButton = document.getElementById('mic-btn');
+    let toggleSessionsButton = document.getElementById('toggle-sessions-btn');
+    let sessionContainer = document.getElementById('sessions');
 
     let stopwatchInterval;
     let elapsedTime = 0;
     let isRunning = false;
+    let sessionStartTime;
 
     // Function to format time as HH:MM:SS:ms
     function formatTime(ms) {
@@ -75,15 +85,41 @@
       return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
     }
 
+    // Function to display the next session time
+    function calculateNextSession() {
+      const currentTime = new Date();
+      let nextSessionTime = new Date(currentTime);
+
+      let startHour = currentTime.getHours();
+      if (startHour >= 7 && startHour < 19) {
+        // Between 7am and 7pm, add 2 hours
+        nextSessionTime.setHours(currentTime.getHours() + 2);
+      } else {
+        // Between 7pm and 7am, add 3 hours
+        nextSessionTime.setHours(currentTime.getHours() + 3);
+      }
+
+      let hours = nextSessionTime.getHours();
+      let minutes = nextSessionTime.getMinutes();
+      let ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 12-hour format
+      let nextTimeFormatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${ampm}`;
+
+      nextSessionDisplay.textContent = `Next session starts at: ${nextTimeFormatted}`;
+    }
+
     // Start the stopwatch
     function startStopwatch() {
       if (!isRunning) {
         isRunning = true;
+        sessionStartTime = new Date(); // Track when the session started
         const startTime = Date.now() - elapsedTime;
         stopwatchInterval = setInterval(() => {
           elapsedTime = Date.now() - startTime;
           timerDisplay.textContent = formatTime(elapsedTime);
         }, 10);
+        calculateNextSession();
       }
     }
 
@@ -110,7 +146,6 @@
         time: elapsedTime,
         dateTime: dateTime
       };
-      // Retrieve existing sessions from localStorage
       const storedSessions = JSON.parse(localStorage.getItem('sessions')) || [];
       storedSessions.push(sessionData);
       localStorage.setItem('sessions', JSON.stringify(storedSessions));
@@ -136,11 +171,11 @@
     function initializeRecognition() {
       if ('webkitSpeechRecognition' in window) {
         recognition = new webkitSpeechRecognition();
-        recognition.continuous = true; // Continuous listening
+        recognition.continuous = true;
         recognition.interimResults = false;
         recognition.lang = 'en-US';
 
-        recognition.start(); // Start recognition immediately
+        recognition.start();
 
         // Handle recognition results
         recognition.onresult = function(event) {
@@ -153,12 +188,14 @@
           } else if (voiceInput === 'pause' || voiceInput === 'stop') {
             pauseStopwatch();
             statusText.textContent = 'Stopwatch paused!';
-          } else if (voiceInput === 'reset') {
+          } else if (voiceInput === 'reset' || voiceInput === 'restart') {
             resetStopwatch();
             statusText.textContent = 'Stopwatch reset!';
           } else if (voiceInput === 'end' || voiceInput === 'and') {
+            pauseStopwatch();  // Stop the timer
+            resetStopwatch();  // Reset the timer
             recognition.stop();
-            statusText.textContent = 'Voice control ended.';
+            statusText.textContent = 'Session ended, timer reset.';
             saveSession();
           } else {
             statusText.textContent = 'Unrecognized command: ' + voiceInput;
@@ -167,27 +204,41 @@
 
         // Handle recognition errors
         recognition.onerror = function(event) {
-          statusText.textContent = 'Error: ' + event.error;
+          statusText.textContent = `Error: ${event.error}`;
         };
 
-        // Continue listening after recognition ends unless manually stopped
+        // Restart recognition after it ends
         recognition.onend = function() {
-          recognition.start(); // Restart recognition automatically for continuous listening
+          recognition.start();
         };
 
-        loadSessions(); // Load previous sessions on page load
+        loadSessions();
       } else {
         alert("Sorry, your browser does not support the Web Speech API.");
       }
     }
 
-    // Attach event listener to the button to start recognition on click
-    micButton.addEventListener('click', () => {
-      initializeRecognition();
-      micButton.style.display = 'none'; // Hide the button after starting recognition
+    // Toggle session history visibility
+    toggleSessionsButton.addEventListener('click', () => {
+      if (sessionContainer.style.display === 'none') {
+        sessionContainer.style.display = 'block';
+        toggleSessionsButton.textContent = 'Hide Session History';
+      } else {
+        sessionContainer.style.display = 'none';
+        toggleSessionsButton.textContent = 'Show Session History';
+      }
     });
 
-    // Load previous sessions from localStorage when the page is ready
+    // Attach event listener to the button to start recognition on click
+    micButton.addEventListener('click', () => {
+      try {
+        initializeRecognition();
+        micButton.style.display = 'none'; // Hide the button after starting recognition
+      } catch (error) {
+        statusText.textContent = `Error: ${error.message}`;
+      }
+    });
+
     document.addEventListener('DOMContentLoaded', loadSessions);
   </script>
 </body>
