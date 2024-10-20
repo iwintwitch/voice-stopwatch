@@ -43,6 +43,9 @@
       background-color: white;
       display: none; /* Hidden initially */
     }
+    .session-actions {
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -53,9 +56,14 @@
   <button id="mic-btn">Start Voice Control</button>
   <button id="toggle-sessions-btn">Show Session History</button>
   <p id="output"></p>
+
   <div id="sessions">
     <h3>Session History:</h3>
     <ul id="session-list"></ul>
+    <div class="session-actions">
+      <button id="delete-selected">Delete Selected</button>
+      <button id="mark-important">Mark as Important</button>
+    </div>
   </div>
 
   <script>
@@ -68,6 +76,8 @@
     let micButton = document.getElementById('mic-btn');
     let toggleSessionsButton = document.getElementById('toggle-sessions-btn');
     let sessionContainer = document.getElementById('sessions');
+    let deleteSelectedButton = document.getElementById('delete-selected');
+    let markImportantButton = document.getElementById('mark-important');
 
     let stopwatchInterval;
     let elapsedTime = 0;
@@ -141,21 +151,42 @@
 
     // Save session using localStorage
     function saveSession() {
-      const dateTime = new Date().toLocaleString();
+      const dateTime = new Date();
+      const sessionIndex = (JSON.parse(localStorage.getItem('sessions')) || []).length + 1;
+      const sessionName = `S${sessionIndex} - ${dateTime.toLocaleDateString()} - ${formatAMPM(dateTime)}`;
       const sessionData = {
-        time: elapsedTime,
-        dateTime: dateTime
+        name: sessionName,
+        time: elapsedTime
       };
       const storedSessions = JSON.parse(localStorage.getItem('sessions')) || [];
       storedSessions.push(sessionData);
       localStorage.setItem('sessions', JSON.stringify(storedSessions));
-      addSessionToList(dateTime, elapsedTime);
+      addSessionToList(sessionName, elapsedTime);
+    }
+
+    // Format time to AM/PM format
+    function formatAMPM(date) {
+      let hours = date.getHours();
+      let minutes = date.getMinutes();
+      let ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // the hour '0' should be '12'
+      minutes = minutes < 10 ? '0' + minutes : minutes;
+      return hours + ':' + minutes + ' ' + ampm;
     }
 
     // Add session to the list on page
-    function addSessionToList(dateTime, elapsedMs) {
+    function addSessionToList(name, elapsedMs) {
       const li = document.createElement('li');
-      li.textContent = `Session at ${dateTime}: ${formatTime(elapsedMs)}`;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'session-checkbox';
+
+      const label = document.createElement('label');
+      label.textContent = `${name}: ${formatTime(elapsedMs)}`;
+
+      li.appendChild(checkbox);
+      li.appendChild(label);
       sessionList.appendChild(li);
     }
 
@@ -163,7 +194,7 @@
     function loadSessions() {
       const storedSessions = JSON.parse(localStorage.getItem('sessions')) || [];
       storedSessions.forEach(session => {
-        addSessionToList(session.dateTime, session.time);
+        addSessionToList(session.name, session.time);
       });
     }
 
@@ -228,6 +259,47 @@
         toggleSessionsButton.textContent = 'Show Session History';
       }
     });
+
+    // Delete selected sessions
+    deleteSelectedButton.addEventListener('click', () => {
+      const checkboxes = document.querySelectorAll('.session-checkbox:checked');
+      if (checkboxes.length === 0) {
+        alert('No sessions selected.');
+        return;
+      }
+      if (confirm('Are you sure you want to delete the selected sessions?')) {
+        checkboxes.forEach(checkbox => {
+          const li = checkbox.parentElement;
+          sessionList.removeChild(li);
+        });
+        saveSessionsToLocalStorage();
+      }
+    });
+
+    // Mark selected sessions as important
+    markImportantButton.addEventListener('click', () => {
+      const checkboxes = document.querySelectorAll('.session-checkbox:checked');
+      checkboxes.forEach(checkbox => {
+        const label = checkbox.nextElementSibling;
+        label.style.fontWeight = 'bold';
+        label.style.color = 'red';
+      });
+    });
+
+    // Save current sessions back to localStorage after changes
+    function saveSessionsToLocalStorage() {
+      const updatedSessions = [];
+      const sessionItems = sessionList.querySelectorAll('li');
+      sessionItems.forEach(li => {
+        const label = li.querySelector('label').textContent;
+        const [sessionName, sessionTime] = label.split(': ');
+        updatedSessions.push({
+          name: sessionName,
+          time: sessionTime
+        });
+      });
+      localStorage.setItem('sessions', JSON.stringify(updatedSessions));
+    }
 
     // Attach event listener to the button to start recognition on click
     micButton.addEventListener('click', () => {
