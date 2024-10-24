@@ -15,10 +15,19 @@
       margin: 0;
       background-color: #f4f4f4;
     }
-    #timer {
-      font-size: 64px;
+    #timers {
+      display: flex;
+      justify-content: space-around;
+      width: 100%;
       margin: 20px;
+    }
+    .timer {
+      font-size: 64px;
+      padding: 10px;
       text-align: center;
+    }
+    .active {
+      border: 3px solid green;
     }
     #next-session {
       font-size: 24px;
@@ -51,8 +60,13 @@
 <body>
   <h1>Voice-Controlled Stopwatch</h1>
   <div id="next-session">Next session starts at: --:--</div>
-  <p id="timer">00:00.000</p>
-  <p id="status">Say "start", "stop", "pause", "reset", "restart", or "end"</p>
+  
+  <div id="timers">
+    <div id="timer1" class="timer active">00:00.000</div>
+    <div id="timer2" class="timer">00:00.000</div>
+  </div>
+  
+  <p id="status">Say "start", "stop", "pause", "reset", "restart", "switch", or "end"</p>
   <button id="mic-btn">Start Voice Control</button>
   <button id="toggle-sessions-btn">Show Session History</button>
   <p id="output"></p>
@@ -68,7 +82,8 @@
 
   <script>
     let recognition;
-    let timerDisplay = document.getElementById('timer');
+    let timer1Display = document.getElementById('timer1');
+    let timer2Display = document.getElementById('timer2');
     let nextSessionDisplay = document.getElementById('next-session');
     let outputText = document.getElementById('output');
     let statusText = document.getElementById('status');
@@ -79,10 +94,15 @@
     let deleteSelectedButton = document.getElementById('delete-selected');
     let markImportantButton = document.getElementById('mark-important');
 
-    let stopwatchInterval;
-    let elapsedTime = 0;
-    let isRunning = false;
+    let stopwatchInterval1, stopwatchInterval2;
+    let elapsedTime1 = 0;
+    let elapsedTime2 = 0;
+    let isRunning1 = false;
+    let isRunning2 = false;
+    let activeTimer = 1; // To track the active timer
     let sessionStartTime;
+    let nextSessionSet = false;
+    let wakeLock = null;
 
     // Function to format time as MM:SS:ms
     function formatTime(ms) {
@@ -101,10 +121,8 @@
 
       let startHour = currentTime.getHours();
       if (startHour >= 7 && startHour < 19) {
-        // Between 7am and 7pm, add 2 hours
         nextSessionTime.setHours(currentTime.getHours() + 2);
       } else {
-        // Between 7pm and 7am, add 3 hours
         nextSessionTime.setHours(currentTime.getHours() + 3);
       }
 
@@ -112,77 +130,131 @@
       let minutes = nextSessionTime.getMinutes();
       let ampm = hours >= 12 ? 'PM' : 'AM';
       hours = hours % 12;
-      hours = hours ? hours : 12; // 12-hour format
+      hours = hours ? hours : 12;
       let nextTimeFormatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${ampm}`;
 
       nextSessionDisplay.textContent = `Next session starts at: ${nextTimeFormatted}`;
     }
 
-    // Start the stopwatch
-    function startStopwatch() {
-      if (!isRunning) {
-        isRunning = true;
-        sessionStartTime = new Date(); // Track when the session started
-        const startTime = Date.now() - elapsedTime;
-        stopwatchInterval = setInterval(() => {
-          elapsedTime = Date.now() - startTime;
-          timerDisplay.textContent = formatTime(elapsedTime);
+    // Function to switch between timers
+    function switchTimer() {
+      if (activeTimer === 1) {
+        pauseTimer1();
+        activeTimer = 2;
+        timer1Display.classList.remove('active');
+        timer2Display.classList.add('active');
+      } else {
+        pauseTimer2();
+        activeTimer = 1;
+        timer2Display.classList.remove('active');
+        timer1Display.classList.add('active');
+      }
+    }
+
+    // Request wake lock
+    async function requestWakeLock() {
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+      } catch (err) {
+        console.error(`${err.name}, ${err.message}`);
+      }
+    }
+
+    // Release wake lock
+    function releaseWakeLock() {
+      if (wakeLock !== null) {
+        wakeLock.release().then(() => wakeLock = null);
+      }
+    }
+
+    // Start timer 1
+    function startTimer1() {
+      if (!isRunning1) {
+        isRunning1 = true;
+        sessionStartTime = new Date();
+        const startTime = Date.now() - elapsedTime1;
+        stopwatchInterval1 = setInterval(() => {
+          elapsedTime1 = Date.now() - startTime;
+          timer1Display.textContent = formatTime(elapsedTime1);
         }, 10);
-        calculateNextSession();
+        if (!nextSessionSet) {
+          calculateNextSession();
+          nextSessionSet = true;
+        }
+        requestWakeLock();
       }
     }
 
-    // Pause the stopwatch
-    function pauseStopwatch() {
-      if (isRunning) {
-        clearInterval(stopwatchInterval);
-        isRunning = false;
+    // Pause timer 1
+    function pauseTimer1() {
+      if (isRunning1) {
+        clearInterval(stopwatchInterval1);
+        isRunning1 = false;
+        releaseWakeLock();
       }
     }
 
-    // Reset the stopwatch
-    function resetStopwatch() {
-      clearInterval(stopwatchInterval);
-      isRunning = false;
-      elapsedTime = 0;
-      timerDisplay.textContent = "00:00.000";
+    // Start timer 2
+    function startTimer2() {
+      if (!isRunning2) {
+        isRunning2 = true;
+        const startTime = Date.now() - elapsedTime2;
+        stopwatchInterval2 = setInterval(() => {
+          elapsedTime2 = Date.now() - startTime;
+          timer2Display.textContent = formatTime(elapsedTime2);
+        }, 10);
+        requestWakeLock();
+      }
     }
 
-    // Save session using localStorage
+    // Pause timer 2
+    function pauseTimer2() {
+      if (isRunning2) {
+        clearInterval(stopwatchInterval2);
+        isRunning2 = false;
+        releaseWakeLock();
+      }
+    }
+
+    // Reset both timers
+    function resetTimers() {
+      pauseTimer1();
+      pauseTimer2();
+      elapsedTime1 = 0;
+      elapsedTime2 = 0;
+      timer1Display.textContent = "00:00.000";
+      timer2Display.textContent = "00:00.000";
+      nextSessionSet = false;
+      releaseWakeLock();
+    }
+
+    // Save session data with both timers and total time
     function saveSession() {
       const dateTime = new Date();
       const sessionIndex = (JSON.parse(localStorage.getItem('sessions')) || []).length + 1;
       const sessionName = `S${sessionIndex} - ${dateTime.toLocaleDateString()} - ${formatAMPM(dateTime)}`;
+      const totalTime = elapsedTime1 + elapsedTime2;
       const sessionData = {
         name: sessionName,
-        time: elapsedTime // Save the actual elapsed time before resetting
+        time1: elapsedTime1,
+        time2: elapsedTime2,
+        totalTime
       };
       const storedSessions = JSON.parse(localStorage.getItem('sessions')) || [];
       storedSessions.push(sessionData);
       localStorage.setItem('sessions', JSON.stringify(storedSessions));
-      addSessionToList(sessionName, elapsedTime);
+      addSessionToList(sessionName, elapsedTime1, elapsedTime2, totalTime);
     }
 
-    // Format time to AM/PM format
-    function formatAMPM(date) {
-      let hours = date.getHours();
-      let minutes = date.getMinutes();
-      let ampm = hours >= 12 ? 'PM' : 'AM';
-      hours = hours % 12;
-      hours = hours ? hours : 12; // the hour '0' should be '12'
-      minutes = minutes < 10 ? '0' + minutes : minutes;
-      return hours + ':' + minutes + ' ' + ampm;
-    }
-
-    // Add session to the list on page
-    function addSessionToList(name, elapsedMs) {
+    // Add session to the list with total time
+    function addSessionToList(name, time1, time2, totalTime) {
       const li = document.createElement('li');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.className = 'session-checkbox';
 
       const label = document.createElement('label');
-      label.textContent = `${name}: ${formatTime(elapsedMs)}`;
+      label.textContent = `${name}: Timer1: ${formatTime(time1)}, Timer2: ${formatTime(time2)}, Total: ${formatTime(totalTime)}`;
 
       li.appendChild(checkbox);
       li.appendChild(label);
@@ -193,7 +265,7 @@
     function loadSessions() {
       const storedSessions = JSON.parse(localStorage.getItem('sessions')) || [];
       storedSessions.forEach(session => {
-        addSessionToList(session.name, session.time);
+        addSessionToList(session.name, session.time1, session.time2, session.totalTime);
       });
     }
 
@@ -213,20 +285,25 @@
           outputText.textContent = 'You said: ' + voiceInput;
 
           if (voiceInput === 'start') {
-            startStopwatch();
+            if (activeTimer === 1) startTimer1();
+            else startTimer2();
             statusText.textContent = 'Stopwatch started!';
           } else if (voiceInput === 'pause' || voiceInput === 'stop') {
-            pauseStopwatch();
+            if (activeTimer === 1) pauseTimer1();
+            else pauseTimer2();
             statusText.textContent = 'Stopwatch paused!';
           } else if (voiceInput === 'reset' || voiceInput === 'restart') {
-            resetStopwatch();
-            statusText.textContent = 'Stopwatch reset!';
+            resetTimers();
+            statusText.textContent = 'Timers reset!';
+          } else if (voiceInput === 'switch') {
+            switchTimer();
+            statusText.textContent = 'Switched timers!';
           } else if (voiceInput === 'end' || voiceInput === 'and') {
-            pauseStopwatch();  // Stop the timer
-            saveSession(); // Save the session before resetting the timer
-            resetStopwatch();  // Reset the timer
-            recognition.stop();
-            statusText.textContent = 'Session ended, timer reset.';
+            pauseTimer1();  
+            pauseTimer2();
+            saveSession(); 
+            resetTimers();
+            statusText.textContent = 'Session ended, timers reset.';
           } else {
             statusText.textContent = 'Unrecognized command: ' + voiceInput;
           }
@@ -291,10 +368,12 @@
       const sessionItems = sessionList.querySelectorAll('li');
       sessionItems.forEach(li => {
         const label = li.querySelector('label').textContent;
-        const [sessionName, sessionTime] = label.split(': ');
+        const [sessionName, timer1, timer2, total] = label.split(', ').map((t) => t.split(': ')[1]);
         updatedSessions.push({
           name: sessionName,
-          time: parseTimeToMilliseconds(sessionTime)
+          time1: parseTimeToMilliseconds(timer1),
+          time2: parseTimeToMilliseconds(timer2),
+          totalTime: parseTimeToMilliseconds(total)
         });
       });
       localStorage.setItem('sessions', JSON.stringify(updatedSessions));
